@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#efeaf7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#171225" media="(prefers-color-scheme: dark)">
-<meta name="description" content="基本周波数を選び、脳波帯ボタンをタップ。左右の周波数差によるバイノーラルビート。">
+<meta name="description" content="基準周波数を選び、脳波帯ボタンをタップ。左右の周波数差によるバイノーラルビート。">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="バイノーラル">
 <meta name="mobile-web-app-capable" content="yes">
@@ -111,10 +111,25 @@
     display:flex;justify-content:space-between;align-items:baseline;
     font-size:12.5px;color:var(--muted);
   }
-  .ctrl-val{
-    font-family:"Fraunces",Georgia,serif;font-size:16px;font-weight:500;
-    color:var(--ink);font-variant-numeric:tabular-nums;
+  .stepper{display:flex;align-items:center;gap:5px}
+  .step{
+    appearance:none;flex:none;width:26px;height:26px;border-radius:8px;
+    border:1px solid var(--line);background:transparent;color:var(--ink);
+    font-family:inherit;font-size:15px;line-height:1;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+    touch-action:manipulation;transition:transform .06s, background .15s;
   }
+  .step:active{transform:scale(.92)}
+  .step:hover{background:var(--line)}
+  #baseNum{
+    width:2.9em;border:none;background:transparent;color:var(--ink);
+    font-family:"Fraunces",Georgia,serif;font-size:17px;font-weight:500;
+    text-align:right;font-variant-numeric:tabular-nums;
+    -moz-appearance:textfield;padding:2px 0;
+  }
+  #baseNum::-webkit-outer-spin-button,#baseNum::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  #baseNum:focus{outline:none;box-shadow:0 2px 0 var(--sub)}
+  .stepper .su{font-size:11px;color:var(--muted);margin:0 3px 0 1px}
   .ctrl input[type="range"]{
     width:100%;height:24px;background:transparent;cursor:pointer;
   }
@@ -217,7 +232,7 @@
 <div class="wrap">
   <header>
     <h1>バイノーラルビート</h1>
-    <p class="sub">基本周波数を選び、脳波帯のボタンをタップ。<br>左右の周波数差で、その状態へと誘います。</p>
+    <p class="sub">基準周波数を選び、脳波帯のボタンをタップ。<br>左右の周波数差で、その状態へと誘います。</p>
   </header>
 
   <div class="warn">
@@ -227,10 +242,15 @@
 
   <div class="ctrl">
     <div class="ctrl-head">
-      <span>基本周波数（左耳の音）</span>
-      <span class="ctrl-val" id="baseVal">200 Hz</span>
+      <span>基準周波数（左耳の音）</span>
+      <span class="stepper">
+        <button type="button" class="step" id="baseMinus" aria-label="1Hz下げる">−</button>
+        <input type="number" id="baseNum" min="150" max="400" step="1" value="200" inputmode="numeric" autocomplete="off" aria-label="基準周波数（ヘルツ）">
+        <span class="su">Hz</span>
+        <button type="button" class="step" id="basePlus" aria-label="1Hz上げる">＋</button>
+      </span>
     </div>
-    <input type="range" id="base" min="150" max="400" step="1" value="200" autocomplete="off" aria-label="基本周波数（150から400ヘルツ）">
+    <input type="range" id="base" min="150" max="400" step="1" value="200" autocomplete="off" aria-label="基準周波数（150から400ヘルツ）">
     <div class="ctrl-scale"><span>150</span><span>275</span><span>400</span></div>
   </div>
 
@@ -263,9 +283,9 @@
   var BANDS = [
     {key:"delta", g:"δ", name:"デルタ波", off:3,  desc:"深い睡眠、身体のヒーリング、無意識",              hue:"#9d8ae0"},
     {key:"theta", g:"θ", name:"シータ波", off:6,  desc:"深い瞑想、変性意識（体外離脱など）、直感", hue:"#4fbbb8"},
-    {key:"alpha", g:"α", name:"アルファ波", off:11, desc:"リラックス、軽い瞑想、集中力の土台",             hue:"#5fc47f"},
-    {key:"beta",  g:"β", name:"ベータ波", off:22, desc:"通常の覚醒状態、論理的思考、アクティブな集中",     hue:"#e6ba5f"},
-    {key:"gamma", g:"γ", name:"ガンマ波", off:60, desc:"高度な認知処理、ひらめき、統合的な気づき",         hue:"#ec7a9c"}
+    {key:"alpha", g:"α", name:"アルファ波", off:9,  desc:"リラックス、軽い瞑想、集中力の土台",             hue:"#5fc47f"},
+    {key:"beta",  g:"β", name:"ベータ波", off:21, desc:"通常の覚醒状態、論理的思考、アクティブな集中",     hue:"#e6ba5f"},
+    {key:"gamma", g:"γ", name:"ガンマ波", off:45, desc:"高度な認知処理、ひらめき、統合的な気づき",         hue:"#ec7a9c"}
   ];
 
   var AC = window.AudioContext || window.webkitAudioContext;
@@ -282,15 +302,17 @@
 
   var bandsEl   = document.getElementById("bands");
   var baseEl    = document.getElementById("base");
-  var baseValEl = document.getElementById("baseVal");
+  var baseNumEl = document.getElementById("baseNum");
+  var baseMinus = document.getElementById("baseMinus");
+  var basePlus  = document.getElementById("basePlus");
   var volEl     = document.getElementById("vol");
   var stopBtn   = document.getElementById("stopBtn");
   var nowEl     = document.getElementById("nowPlaying");
   var srEl      = document.getElementById("sr");
 
-  baseEl.value = String(baseFreq);
-  volEl.value  = String(vol);
-  baseValEl.textContent = baseFreq + " Hz";
+  baseEl.value    = String(baseFreq);
+  baseNumEl.value = String(baseFreq);
+  volEl.value     = String(vol);
 
   /* ---- audio ---- */
   function ensureCtx(){
@@ -446,14 +468,42 @@
     updateNowPlaying();
   }
 
-  baseEl.addEventListener("input", function(){
-    baseFreq = parseInt(baseEl.value, 10);
-    baseValEl.textContent = baseFreq + " Hz";
-    try{ localStorage.setItem(BASEKEY, String(baseFreq)); }catch(e){}
+  // 基準周波数：スライダー／数値入力／−＋ボタンを同期。src を除いた要素だけ更新して入力の邪魔をしない
+  function setBase(v, src){
+    var n = Math.round(v);
+    if(isNaN(n)) return;
+    n = Math.max(150, Math.min(400, n));
+    baseFreq = n;
+    if(src !== "slider") baseEl.value = String(n);
+    if(src !== "num") baseNumEl.value = String(n);
+    try{ localStorage.setItem(BASEKEY, String(n)); }catch(e){}
     updateNowPlaying();
     clearTimeout(baseEl._t);
     baseEl._t = setTimeout(retune, 120);
+  }
+  baseEl.addEventListener("input", function(){ setBase(parseInt(baseEl.value, 10), "slider"); });
+  baseNumEl.addEventListener("input", function(){
+    var raw = parseInt(baseNumEl.value, 10);
+    if(!isNaN(raw) && raw >= 150 && raw <= 400) setBase(raw, "num");
   });
+  baseNumEl.addEventListener("blur", function(){
+    var v = parseInt(baseNumEl.value, 10);
+    if(!isNaN(v)) setBase(v); else baseNumEl.value = String(baseFreq);
+  });
+  baseNumEl.addEventListener("keydown", function(e){ if(e.key === "Enter") baseNumEl.blur(); });
+
+  // −／＋ ボタン：タップで1Hz、長押しで連続
+  function nudge(delta){ setBase(baseFreq + delta); }
+  function holdRepeat(btn, fn){
+    var to, iv;
+    function start(e){ e.preventDefault(); fn(); to = setTimeout(function(){ iv = setInterval(fn, 70); }, 420); }
+    function stop(){ clearTimeout(to); clearInterval(iv); }
+    btn.addEventListener("pointerdown", start);
+    ["pointerup","pointerleave","pointercancel"].forEach(function(ev){ btn.addEventListener(ev, stop); });
+  }
+  holdRepeat(baseMinus, function(){ nudge(-1); });
+  holdRepeat(basePlus,  function(){ nudge(1); });
+
   volEl.addEventListener("input", function(){ setVol(parseFloat(volEl.value)); });
   stopBtn.addEventListener("click", function(){ stopAll(); setActive(null); });
 
