@@ -245,13 +245,13 @@
       <span>基準周波数（左耳の音）</span>
       <span class="stepper">
         <button type="button" class="step" id="baseMinus" aria-label="1Hz下げる">−</button>
-        <input type="number" id="baseNum" min="150" max="400" step="1" value="200" inputmode="numeric" autocomplete="off" aria-label="基準周波数（ヘルツ）">
+        <input type="number" id="baseNum" min="150" max="999" step="1" value="200" inputmode="numeric" autocomplete="off" aria-label="基準周波数（ヘルツ）">
         <span class="su">Hz</span>
         <button type="button" class="step" id="basePlus" aria-label="1Hz上げる">＋</button>
       </span>
     </div>
-    <input type="range" id="base" min="150" max="400" step="1" value="200" autocomplete="off" aria-label="基準周波数（150から400ヘルツ）">
-    <div class="ctrl-scale"><span>150</span><span>275</span><span>400</span></div>
+    <input type="range" id="base" min="150" max="999" step="1" value="200" autocomplete="off" aria-label="基準周波数（150から999ヘルツ）">
+    <div class="ctrl-scale"><span>150</span><span>575</span><span>999</span></div>
   </div>
 
   <div class="ctrl vol">
@@ -283,6 +283,7 @@
   var BANDS = [
     {key:"delta", g:"δ", name:"デルタ波", off:3,  desc:"深い睡眠、身体のヒーリング、無意識",              hue:"#9d8ae0"},
     {key:"theta", g:"θ", name:"シータ波", off:6,  desc:"深い瞑想、変性意識（体外離脱など）、直感", hue:"#4fbbb8"},
+    {key:"schumann", g:"♁", name:"シューマン共振", off:7.83, desc:"地球の共鳴、グラウンディング、安定", hue:"#4a9fe0"},
     {key:"alpha", g:"α", name:"アルファ波", off:9,  desc:"リラックス、軽い瞑想、集中力の土台",             hue:"#5fc47f"},
     {key:"beta",  g:"β", name:"ベータ波", off:21, desc:"通常の覚醒状態、論理的思考、アクティブな集中",     hue:"#e6ba5f"},
     {key:"gamma", g:"γ", name:"ガンマ波", off:45, desc:"高度な認知処理、ひらめき、統合的な気づき",         hue:"#ec7a9c"}
@@ -298,7 +299,7 @@
   var vol = 0.5;
   try{ var sv = parseFloat(localStorage.getItem(VOLKEY)); if(sv >= 0 && sv <= 1) vol = sv; }catch(e){}
   var baseFreq = 200;
-  try{ var sb = parseInt(localStorage.getItem(BASEKEY), 10); if(sb >= 150 && sb <= 400) baseFreq = sb; }catch(e){}
+  try{ var sb = parseInt(localStorage.getItem(BASEKEY), 10); if(sb >= 150 && sb <= 999) baseFreq = sb; }catch(e){}
 
   var bandsEl   = document.getElementById("bands");
   var baseEl    = document.getElementById("base");
@@ -327,7 +328,9 @@
     if(ctx.state === "suspended") ctx.resume();
   }
 
-  // 整数Hzなら1秒ぶんで左右とも整数周期 → 継ぎ目なくループ
+  // 整数Hzの差なら1秒ぶんで左右とも整数周期 → 継ぎ目なくループ。
+  // シューマン共振(7.83)のような小数の差は、ループの継ぎ目で位相がぴったり
+  // 揃わないため、両端をごく短く（8ms）フェードしてクリック音を防ぐ
   function toneBuffer(base, off){
     var sr = ctx.sampleRate;
     var len = Math.round(sr);
@@ -339,7 +342,19 @@
       L[i] = Math.sin(wl * i);
       R[i] = Math.sin(wr * i);
     }
+    if(Math.round(off * 100) % 100 !== 0){
+      fadeEdges(L, sr);
+      fadeEdges(R, sr);
+    }
     return buf;
+  }
+  function fadeEdges(data, sr){
+    var n = Math.min(data.length >> 1, Math.round(sr * 0.008));   // 8ms
+    for(var i = 0; i < n; i++){
+      var g = 0.5 - 0.5 * Math.cos(Math.PI * i / n);
+      data[i] *= g;
+      data[data.length - 1 - i] *= g;
+    }
   }
 
   function fadeTo(param, target, dur){
@@ -472,7 +487,7 @@
   function setBase(v, src){
     var n = Math.round(v);
     if(isNaN(n)) return;
-    n = Math.max(150, Math.min(400, n));
+    n = Math.max(150, Math.min(999, n));
     baseFreq = n;
     if(src !== "slider") baseEl.value = String(n);
     if(src !== "num") baseNumEl.value = String(n);
@@ -484,7 +499,7 @@
   baseEl.addEventListener("input", function(){ setBase(parseInt(baseEl.value, 10), "slider"); });
   baseNumEl.addEventListener("input", function(){
     var raw = parseInt(baseNumEl.value, 10);
-    if(!isNaN(raw) && raw >= 150 && raw <= 400) setBase(raw, "num");
+    if(!isNaN(raw) && raw >= 150 && raw <= 999) setBase(raw, "num");
   });
   baseNumEl.addEventListener("blur", function(){
     var v = parseInt(baseNumEl.value, 10);
