@@ -328,9 +328,7 @@
     if(ctx.state === "suspended") ctx.resume();
   }
 
-  // 整数Hzの差なら1秒ぶんで左右とも整数周期 → 継ぎ目なくループ。
-  // シューマン共振(7.83)のような小数の差は、ループの継ぎ目で位相がぴったり
-  // 揃わないため、両端をごく短く（8ms）フェードしてクリック音を防ぐ
+  // 整数Hzの差なら1秒ぶんで左右とも整数周期 → 継ぎ目なくループ
   function toneBuffer(base, off){
     var sr = ctx.sampleRate;
     var len = Math.round(sr);
@@ -342,19 +340,10 @@
       L[i] = Math.sin(wl * i);
       R[i] = Math.sin(wr * i);
     }
-    if(Math.round(off * 100) % 100 !== 0){
-      fadeEdges(L, sr);
-      fadeEdges(R, sr);
-    }
     return buf;
   }
-  function fadeEdges(data, sr){
-    var n = Math.min(data.length >> 1, Math.round(sr * 0.008));   // 8ms
-    for(var i = 0; i < n; i++){
-      var g = 0.5 - 0.5 * Math.cos(Math.PI * i / n);
-      data[i] *= g;
-      data[data.length - 1 - i] *= g;
-    }
+  function isIntegerOffset(off){
+    return Math.round(off * 100) % 100 === 0;
   }
 
   function fadeTo(param, target, dur){
@@ -364,17 +353,34 @@
     param.linearRampToValueAtTime(target, now + dur);
   }
 
+  // 整数Hzの差はループ音源（軽量・実績あり）、シューマン共振のような端数の差は
+  // そもそも「ループの継ぎ目」が存在しない連続オシレーター（左右別々に発振→合成）を使う
   function makeVoice(off){
     var t = ctx.currentTime + 0.03;
-    var src = ctx.createBufferSource();
-    src.buffer = toneBuffer(baseFreq, off);
-    src.loop = true;
     var g = ctx.createGain();
     g.gain.value = 0;
-    src.connect(g);
     g.connect(master);
-    src.start(t);
-    return {src:src, gain:g};
+
+    if(isIntegerOffset(off)){
+      var src = ctx.createBufferSource();
+      src.buffer = toneBuffer(baseFreq, off);
+      src.loop = true;
+      src.connect(g);
+      src.start(t);
+      return {kind:"buffer", src:src, gain:g};
+    }
+
+    var merger = ctx.createChannelMerger(2);
+    var oscL = ctx.createOscillator();
+    var oscR = ctx.createOscillator();
+    oscL.type = "sine"; oscL.frequency.setValueAtTime(baseFreq, t);
+    oscR.type = "sine"; oscR.frequency.setValueAtTime(baseFreq + off, t);
+    oscL.connect(merger, 0, 0);
+    oscR.connect(merger, 0, 1);
+    merger.connect(g);
+    oscL.start(t);
+    oscR.start(t);
+    return {kind:"osc", oscL:oscL, oscR:oscR, merger:merger, gain:g};
   }
   function killVoice(v, rel){
     if(!v || !ctx) return;
@@ -383,9 +389,16 @@
     p.cancelScheduledValues(now);
     p.setValueAtTime(p.value, now);
     p.linearRampToValueAtTime(0, now + rel);
-    var s = v.src, g = v.gain;
-    try{ s.stop(now + rel + 0.05); }catch(e){}
-    setTimeout(function(){ try{ s.disconnect(); g.disconnect(); }catch(e){} }, (rel + 0.3) * 1000);
+    var g = v.gain;
+    if(v.kind === "osc"){
+      var oL = v.oscL, oR = v.oscR, mg = v.merger;
+      try{ oL.stop(now + rel + 0.05); oR.stop(now + rel + 0.05); }catch(e){}
+      setTimeout(function(){ try{ oL.disconnect(); oR.disconnect(); mg.disconnect(); g.disconnect(); }catch(e){} }, (rel + 0.3) * 1000);
+    }else{
+      var s = v.src;
+      try{ s.stop(now + rel + 0.05); }catch(e){}
+      setTimeout(function(){ try{ s.disconnect(); g.disconnect(); }catch(e){} }, (rel + 0.3) * 1000);
+    }
   }
 
   function playBand(band){
